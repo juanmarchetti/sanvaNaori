@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corazon</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg1:#060812; --bg2:#0b0f26;
+    }
+    html, body { height: 100%; margin: 0; overflow: hidden;
+      background: radial-gradient(circle at 30% 30%, #111a44 0%, var(--bg2) 40%, var(--bg1) 100%);
+      font-family: system-ui, Arial;
+    }
+    #app { position: fixed; inset: 0; }
+    canvas { display:block; }
+    video#video { position: fixed; left:-9999px; top:-9999px; width: 1px; height: 1px; opacity: 0; }
+
+    /* Cámara preview */
+    #previewWrap{
+      position: fixed;
+      right: 12px; bottom: 12px;
+      width: clamp(180px, 28vw, 280px);
+      aspect-ratio: 4 / 3;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(0,0,0,.35);
+      backdrop-filter: blur(10px);
+      display: none;
+      box-shadow: 0 14px 40px rgba(0,0,0,.35);
+      z-index: 20;
+    }
+    #previewWrap video{
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+
+    /* Panel overlay responsive */
+    .panel-wrap{
+      position: fixed;
+      left: 12px; top: 12px;
+      width: min(520px, calc(100vw - 24px));
+      z-index: 30;
+    }
+    .glass{
+      background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+      border: 1px solid rgba(255,255,255,.18);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 14px 40px rgba(0,0,0,.35);
+    }
+    .small-muted{ font-size: 12px; opacity: .9; }
+    .badge-soft{
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(0,0,0,.25);
+      font-weight: 500;
+      max-width: 240px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .form-range{ width: 100%; }
+  </style>
+
+  <!-- Import map para Three -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+
+<div id="app"></div>
+<video id="video" playsinline autoplay muted></video>
+<div id="previewWrap"><video id="preview" playsinline autoplay muted></video></div>
+
+<!-- Panel -->
+<div class="panel-wrap">
+  <div class="glass rounded-4 p-3 text-white">
+    <div class="d-flex align-items-center gap-2">
+      <div class="rounded-circle" style="width:10px;height:10px;background:#ff4fd8;box-shadow:0 0 18px #ff4fd8;"></div>
+      <div class="fw-bold">Corazon <span class="opacity-75">NS</span></div>
+      <span class="badge badge-soft ms-auto" id="status">Listo</span>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      <button class="btn btn-sm btn-outline-light" id="btnStart">🎥 Cámara</button>
+      <button class="btn btn-sm btn-outline-light" id="btnPulse">💓 Pulso</button>
+      <button class="btn btn-sm btn-outline-light" id="btnAutoRot">🌀 Auto giro: ON</button>
+      <button class="btn btn-sm btn-outline-light" data-bs-toggle="collapse" data-bs-target="#controls">
+        ⚙️ Controles
+      </button>
+    </div>
+
+    <div class="collapse show mt-3" id="controls">
+      <div class="row g-2">
+        <div class="col-12 col-sm-6">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="toggleHand" checked>
+            <label class="form-check-label" for="toggleHand">Control mano</label>
+          </div>
+        </div>
+        <div class="col-12 col-sm-6">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="toggleBloom" checked>
+            <label class="form-check-label" for="toggleBloom">Bloom</label>
+          </div>
+        </div>
+        <div class="col-12 col-sm-6">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="togglePreview">
+            <label class="form-check-label" for="togglePreview">Mostrar cámara</label>
+          </div>
+        </div>
+        <div class="col-12 col-sm-6">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="toggleGrip" checked>
+            <label class="form-check-label" for="toggleGrip">Pinch = agarrar</label>
+          </div>
+        </div>
+
+        <div class="col-12 col-sm-6">
+          <label class="form-label mb-1">Movimiento</label>
+          <select class="form-select form-select-sm" id="modeMove">
+            <option value="smooth" selected>Suave (OneEuro)</option>
+            <option value="fast">Rápido</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-sm-6">
+          <label class="form-label mb-1">Modo</label>
+          <select class="form-select form-select-sm" id="modeGesture">
+            <option value="pos" selected>Posición (índice)</option>
+            <option value="rot">Rotación (muñeca)</option>
+            <option value="both">Pos + Rot</option>
+          </select>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label mb-1">Intensidad Glow</label>
+          <input class="form-range" type="range" id="glow" min="0" max="4" step="0.01" value="2.20">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label mb-1">Tamaño partículas</label>
+          <input class="form-range" type="range" id="psize" min="0.03" max="0.20" step="0.005" value="0.10">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label mb-1">Sensibilidad movimiento</label>
+          <input class="form-range" type="range" id="sens" min="0.6" max="2.4" step="0.01" value="1.30">
+          <div class="small-muted">Más alto = se mueve más por el mismo gesto.</div>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label mb-1">Firmeza (anti temblor)</label>
+          <input class="form-range" type="range" id="stability" min="0.6" max="6" step="0.01" value="2.0">
+          <div class="small-muted">Más alto = más estable (menos temblor) pero un poquito más “suave”.</div>
+        </div>
+
+        <div class="small-muted mt-2">
+          ✅ Abierta 🖐️ = grande, Cerrada ✊ = pequeño.<br>
+          ✅ Pinch 🤏 (pulgar + índice) = agarrar y mover preciso.<br>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap JS (solo para collapse) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script type="module">
+  import * as THREE from "three";
+  import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+  import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+  import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+
+  // UI refs
+  const statusEl = document.getElementById("status");
+  const btnStart = document.getElementById("btnStart");
+  const btnPulse = document.getElementById("btnPulse");
+  const btnAutoRot = document.getElementById("btnAutoRot");
+  const toggleHand = document.getElementById("toggleHand");
+  const toggleBloom = document.getElementById("toggleBloom");
+  const togglePreview = document.getElementById("togglePreview");
+  const toggleGrip = document.getElementById("toggleGrip");
+  const glowSlider = document.getElementById("glow");
+  const psizeSlider = document.getElementById("psize");
+  const sensSlider = document.getElementById("sens");
+  const stabilitySlider = document.getElementById("stability");
+  const modeMove = document.getElementById("modeMove");
+  const modeGesture = document.getElementById("modeGesture");
+
+  const videoEl = document.getElementById("video");
+  const previewWrap = document.getElementById("previewWrap");
+  const previewEl = document.getElementById("preview");
+
+  const setStatus = (t)=> statusEl.textContent = t;
+
+  // ========= One Euro Filter (mejor suavizado sin lag) =========
+  // Referencia: "The One Euro Filter" (Casiez et al.)
+  class LowPass {
+    constructor(){ this.y = null; this.a = 0; }
+    filter(x, a){
+      this.a = a;
+      if(this.y === null) this.y = x;
+      this.y = this.y + a * (x - this.y);
+      return this.y;
+    }
+  }
+  function alpha(dt, cutoff){
+    const tau = 1.0 / (2 * Math.PI * cutoff);
+    return 1.0 / (1.0 + tau / dt);
+  }
+  class OneEuro {
+    constructor({minCutoff=1.0, beta=0.0, dCutoff=1.0} = {}){
+      this.minCutoff = minCutoff;
+      this.beta = beta;
+      this.dCutoff = dCutoff;
+      this.x = new LowPass();
+      this.dx = new LowPass();
+      this.last = null;
+    }
+    filter(value, t){
+      if(this.last === null){ this.last = t; return this.x.filter(value, 1); }
+      const dt = Math.max(1e-3, (t - this.last));
+      this.last = t;
+
+      const dvalue = (this.x.y === null) ? 0 : (value - this.x.y) / dt;
+      const edx = this.dx.filter(dvalue, alpha(dt, this.dCutoff));
+
+      const cutoff = this.minCutoff + this.beta * Math.abs(edx);
+      return this.x.filter(value, alpha(dt, cutoff));
+    }
+  }
+
+  // ========= THREE =========
+  const app = document.getElementById("app");
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 200);
+  camera.position.set(0, 0, 26);
+
+  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  app.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+  const dl = new THREE.DirectionalLight(0xffffff, 1.2);
+  dl.position.set(3, 6, 8);
+  scene.add(dl);
+
+  // Stars
+  {
+    const n = 1200;
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(n*3);
+    for(let i=0;i<n;i++){
+      pos[i*3+0]=(Math.random()-0.5)*140;
+      pos[i*3+1]=(Math.random()-0.5)*90;
+      pos[i*3+2]=(Math.random()-0.5)*140;
+    }
+    geo.setAttribute("position", new THREE.BufferAttribute(pos,3));
+    const mat = new THREE.PointsMaterial({ size:0.06, transparent:true, opacity:0.85, color:0x88ccff });
+    scene.add(new THREE.Points(geo, mat));
+  }
+
+  function makeHeartPoints(total=9000){
+    const positions = new Float32Array(total*3);
+    const colors = new Float32Array(total*3);
+
+    const c1 = new THREE.Color(0xff4fd8);
+    const c2 = new THREE.Color(0x3cf2ff);
+    const c3 = new THREE.Color(0x7cff6b);
+
+    for(let i=0;i<total;i++){
+      const t = Math.random()*Math.PI*2;
+      const x2d = 16*Math.pow(Math.sin(t),3);
+      const y2d = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
+
+      const scale = 0.60;
+      const x = x2d*scale + (Math.random()-0.5)*0.09;
+      const y = y2d*scale + (Math.random()-0.5)*0.09;
+      const z = (Math.random()-0.5)*2.2;
+
+      positions[i*3+0]=x;
+      positions[i*3+1]=y;
+      positions[i*3+2]=z;
+
+      const r = Math.random();
+      const col = new THREE.Color();
+      if(r<0.5) col.copy(c1).lerp(c2, Math.random());
+      else col.copy(c2).lerp(c3, Math.random());
+
+      colors[i*3+0]=col.r;
+      colors[i*3+1]=col.g;
+      colors[i*3+2]=col.b;
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(positions,3));
+    g.setAttribute("color", new THREE.BufferAttribute(colors,3));
+    g.computeBoundingSphere();
+    return g;
+  }
+
+  const heartGeo = makeHeartPoints();
+  const heartMat = new THREE.PointsMaterial({
+    size: parseFloat(psizeSlider.value),
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.98,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+
+  const heart = new THREE.Points(heartGeo, heartMat);
+  const heartGroup = new THREE.Group();
+  heartGroup.add(heart);
+  scene.add(heartGroup);
+
+  // Bloom
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 2.2, 0.45, 0.75);
+  composer.addPass(bloom);
+
+  function setBloom(){
+    bloom.enabled = toggleBloom.checked;
+    bloom.strength = parseFloat(glowSlider.value);
+  }
+  toggleBloom.addEventListener("change", setBloom);
+  glowSlider.addEventListener("input", setBloom);
+  setBloom();
+
+  psizeSlider.addEventListener("input", ()=> heartMat.size = parseFloat(psizeSlider.value));
+
+  // Auto rotation
+  let autoRot = true;
+  btnAutoRot.addEventListener("click", ()=>{
+    autoRot = !autoRot;
+    btnAutoRot.textContent = `🌀 Auto giro: ${autoRot ? "ON" : "OFF"}`;
+  });
+
+  // Pulse
+  let pulseBoost = 0;
+  btnPulse.addEventListener("click", ()=> pulseBoost = Math.min(3.0, pulseBoost + 1.2));
+
+  // ========= Hand tracking =========
+  function loadScript(src){
+    return new Promise((res, rej)=>{
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = res;
+      s.onerror = ()=>rej(new Error("No se pudo cargar: " + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  // normaliza (0..1) a coordenadas de escena, con sensibilidad
+  function toSceneXY(nx, ny, sens){
+    const x = (nx - 0.5) * 20 * sens;
+    const y = -(ny - 0.5) * 14 * sens;
+    return {x,y};
+  }
+
+  function dist2D(a, b){
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  // 0..1: 0 cerrada, 1 abierta
+  function handOpenness(lm){
+    const index  = dist2D(lm[8],  lm[5]);
+    const middle = dist2D(lm[12], lm[9]);
+    const ring   = dist2D(lm[16], lm[13]);
+    const pinky  = dist2D(lm[20], lm[17]);
+    const avg = (index + middle + ring + pinky) / 4;
+    const open = (avg - 0.055) / 0.14;
+    return Math.max(0, Math.min(1, open));
+  }
+
+  // Pinch (pulgar 4 e índice 8)
+  function pinchStrength(lm){
+    const d = dist2D(lm[4], lm[8]);
+    // d pequeño = pinch fuerte
+    const s = 1 - (d - 0.02) / 0.10;
+    return Math.max(0, Math.min(1, s));
+  }
+
+  // Estado
+  let hands = null;
+  let running = false;
+  let busy = false;
+
+  let handOpen = false;
+  let openLevel = 0;
+
+  // “grip” (agarrar con pinch)
+  let gripping = false;
+
+  // Targets
+  const targetPos = new THREE.Vector3(0,0,0);
+  const targetRot = new THREE.Vector3(0,0,0);
+
+  // Filtros OneEuro para x,y,rot
+  const fx = new OneEuro({ minCutoff: 1.0, beta: 0.03, dCutoff: 1.0 });
+  const fy = new OneEuro({ minCutoff: 1.0, beta: 0.03, dCutoff: 1.0 });
+  const frx = new OneEuro({ minCutoff: 1.0, beta: 0.02, dCutoff: 1.0 });
+  const fry = new OneEuro({ minCutoff: 1.0, beta: 0.02, dCutoff: 1.0 });
+
+  async function initHandTracking(){
+    const MP_VER = "0.4.1646424915";
+    await loadScript(`https://cdn.jsdelivr.net/npm/@mediapipe/hands@${MP_VER}/hands.js`);
+
+    hands = new window.Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${MP_VER}/${file}`,
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6,
+      selfieMode: true,
+    });
+
+    hands.onResults((results)=>{
+      if(!toggleHand.checked) return;
+
+      const lm = results?.multiHandLandmarks?.[0];
+      if(!lm){
+        setStatus("Mano no detectada ❌");
+        gripping = false;
+        return;
+      }
+
+      // OPEN/CLOSED con histéresis + suavizado
+      const rawOpen = handOpenness(lm);
+      openLevel = openLevel * 0.85 + rawOpen * 0.15;
+      const OPEN_ON  = 0.56;
+      const OPEN_OFF = 0.40;
+      if(!handOpen && openLevel > OPEN_ON) handOpen = true;
+      if( handOpen && openLevel < OPEN_OFF) handOpen = false;
+
+      // Pinch
+      const pinch = pinchStrength(lm);
+      const PINCH_ON  = 0.65;
+      const PINCH_OFF = 0.45;
+
+      if(toggleGrip.checked){
+        if(!gripping && pinch > PINCH_ON) gripping = true;
+        if( gripping && pinch < PINCH_OFF) gripping = false;
+      }else{
+        gripping = false;
+      }
+
+      setStatus(
+        gripping ? "Agarrando 🤏" :
+        (handOpen ? "Mano ABIERTA 🖐️" : "Mano CERRADA ✊")
+      );
+
+      // Posición (índice)
+      const sens = parseFloat(sensSlider.value);
+      const indexTip = lm[8];
+      const p = toSceneXY(indexTip.x, indexTip.y, sens);
+
+      // Rotación (muñeca)
+      const wrist = lm[0];
+      const yaw = (wrist.x - 0.5) * 2.0;
+      const pitch = -(wrist.y - 0.5) * 1.4;
+
+      // Targets
+      targetPos.set(p.x, p.y, 0);
+      targetRot.set(pitch, yaw, 0);
+    });
+
+    running = true;
+
+    const loop = async ()=>{
+      if(!running) return;
+      if(!busy && videoEl.readyState >= 2){
+        busy = true;
+        try{
+          await hands.send({ image: videoEl });
+        }catch(e){
+          console.error(e);
+          setStatus("Error MediaPipe ❌ (mira consola)");
+        }
+        busy = false;
+      }
+      requestAnimationFrame(loop);
+    };
+    loop();
+  }
+
+  async function startCamera(){
+    try{
+      setStatus("Permiso cámara…");
+
+      if(videoEl.srcObject){
+        videoEl.srcObject.getTracks().forEach(t=>t.stop());
+        videoEl.srcObject = null;
+      }
+
+      // móvil: ideal 720p para balance velocidad/detección
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode:"user", width:{ ideal: 1280 }, height:{ ideal: 720 } },
+        audio: false
+      });
+
+      videoEl.srcObject = stream;
+      previewEl.srcObject = stream;
+
+      await videoEl.play();
+      await previewEl.play();
+
+      setStatus("Cargando manos…");
+      if(!hands) await initHandTracking();
+      setStatus("Listo ✅");
+    }catch(e){
+      console.error(e);
+      setStatus("Error cámara ❌");
+      alert("No se pudo abrir cámara. Revisa permisos y que ninguna app esté usando la cámara.");
+    }
+  }
+
+  btnStart.addEventListener("click", startCamera);
+
+  togglePreview.addEventListener("change", ()=>{
+    previewWrap.style.display = togglePreview.checked ? "block" : "none";
+  });
+
+  // ========= Animate =========
+  let last = performance.now();
+  function animate(){
+    requestAnimationFrame(animate);
+    const now = performance.now();
+    const dt = Math.min(0.033, (now-last)/1000);
+    last = now;
+
+    // Ajuste de estabilidad del filtro desde slider:
+    // - más stability => más minCutoff (más estable) y menos beta (menos jitter)
+    const stab = parseFloat(stabilitySlider.value);
+    const fastMode = (modeMove.value === "fast");
+
+    // Ajustes dinámicos OneEuro
+    const minC = fastMode ? 1.6 : (0.9 + stab * 0.25);
+    const beta = fastMode ? 0.06 : (0.035 - stab * 0.003);
+    fx.minCutoff = minC; fy.minCutoff = minC;
+    frx.minCutoff = minC; fry.minCutoff = minC;
+    fx.beta = Math.max(0.01, beta); fy.beta = Math.max(0.01, beta);
+    frx.beta = Math.max(0.01, beta * 0.8); fry.beta = Math.max(0.01, beta * 0.8);
+
+    // Movimiento por mano
+    if(toggleHand.checked){
+      const t = now / 1000;
+
+      // Si está “gripping”, el movimiento es más directo y con menos suavizado extra
+      const posStrength = gripping ? 1.0 : 0.7;
+
+      const m = modeGesture.value;
+
+      if(m === "pos" || m === "both"){
+        const x = fx.filter(targetPos.x, t);
+        const y = fy.filter(targetPos.y, t);
+
+        // lerp final (micro suavidad)
+        heartGroup.position.x += (x - heartGroup.position.x) * (0.20 * posStrength);
+        heartGroup.position.y += (y - heartGroup.position.y) * (0.20 * posStrength);
+      }
+
+      if(m === "rot" || m === "both"){
+        const rx = frx.filter(targetRot.x, t);
+        const ry = fry.filter(targetRot.y, t);
+
+        heartGroup.rotation.x += (rx - heartGroup.rotation.x) * 0.18;
+        heartGroup.rotation.y += (ry - heartGroup.rotation.y) * 0.18;
+      }
+    }
+
+    // Auto giro extra
+    if(autoRot){
+      heartGroup.rotation.y += dt * 0.55;
+      heartGroup.rotation.x += Math.sin(now*0.0012)*dt*0.25;
+    }
+
+    // Escala por mano abierta/cerrada
+    const closedScale = 0.75;
+    const openScale   = 1.55;
+    const targetScale = handOpen ? openScale : closedScale;
+
+    const nextScale = heartGroup.scale.x + (targetScale - heartGroup.scale.x) * 0.12;
+    heartGroup.scale.setScalar(nextScale);
+
+    // Pulso: botón y también un poquito cuando “grip”
+    pulseBoost *= (1 - dt*3.0);
+    if(gripping) pulseBoost = Math.min(3.0, pulseBoost + dt*0.6);
+
+    const pulse = 0.5 + 0.5*Math.sin(now*(6 + pulseBoost*6)*0.001);
+    heartGroup.scale.multiplyScalar(1 + pulse*0.02);
+
+    // Bloom
+    bloom.strength = toggleBloom.checked ? (parseFloat(glowSlider.value) + pulseBoost*0.20) : 0;
+
+    composer.render();
+  }
+  animate();
+
+  addEventListener("resize", ()=>{
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
+  });
+</script>
+</body>
+</html>
